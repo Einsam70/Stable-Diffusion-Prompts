@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Administrador de Prompts (Automatic1111)</title>
+<style>
+    body {
+        font-family: 'Arial', sans-serif;
+        margin: 20px;
+        padding: 20px;
+        background-color: #f4f4f4;
+    }
+    h2 {
+        color: #333;
+    }
+    .container {
+        display: flex;
+        align-items: flex-start;
+        margin-top: 20px;
+    }
+    .campo-texto {
+        flex: 1;
+        height: 100px;
+        resize: none;
+        margin-left: 10px;
+        margin-right: 10px;
+        box-sizing: border-box;
+    }
+    label {
+        width: 150px;
+        text-align: left;
+    }
+    button {
+        background-color: #4caf50;
+        color: white;
+        cursor: pointer;
+        margin-left: 10px;
+    }
+    .thumbnail {
+        max-width: 320px;
+        max-height: 320px;
+        margin-right: 10px;
+        cursor: pointer;
+    }
+</style>
+<link rel="stylesheet" href="sweetalert/sweetalert2.min.css">
+<script src="sweetalert/sweetalert2.all.min.js"></script>
+</head>
+<body>
+    <div>
+        <h2>Administrador de Prompts</h2>
+    </div>
+    <div class="container">
+        <button onclick="reiniciarFormulario()">Reiniciar Formulario</button>
+    </div>
+    <div class="container">
+        <label for="archivo-csv">Archivo CSV:</label>
+        <input type="file" id="archivo-csv" accept=".csv">
+    </div>
+    <div class="container">
+        <label for="categoria">Categorías:</label>
+        <select id="categoria" onchange="cargarEstilos()">
+            <option value="">Seleccione...</option>
+        </select>
+        <input type="text" id="nueva-categoria" placeholder="Nueva categoría" style="margin-left: 20px;">
+        <button onclick="agregarNuevaCategoria()">Agregar</button>
+    </div>
+    <div class="container">
+        <label for="estilo">Estilos:</label>
+        <select id="estilo" onchange="cargarValoresPrompt()">
+            <option value="">Seleccione...</option>
+        </select>
+        <button onclick="agregarNuevoEstilo()">Agregar Estilo</button>
+    </div>
+    <br>
+    <div class="container">
+        <label for="nombrep">Nombre de estilo: </label>
+        <div id="nombrep" style="margin-left: 10px; color:brown;"></div>
+    </div>
+    <div class="container">
+        <label for="prompt">Prompt: </label>
+        <textarea id="prompt" class="campo-texto"></textarea>
+        <button onclick="copiarContenido('prompt')">Copiar</button>
+        <button onclick="editarContenido('prompt')">Editar</button>
+    </div>
+    <div class="container">
+        <label for="negprompt">Prompt Negativo: </label>
+        <textarea id="negprompt" class="campo-texto"></textarea> 
+        <button onclick="copiarContenido('negprompt')">Copiar</button>
+        <button onclick="editarContenido('negprompt')">Editar</button>       
+    </div>
+    <div class="container">
+        <button onclick="guardarArchivoCSV()">Guardar CSV</button>
+        <button onclick="previsualizarEstilo()">Previsualizar</button>
+        <button onclick="guardarCambios()">Generar nuevo CSV</button>
+    </div>
+<script>
+
+    function reiniciarFormulario() {
+        localStorage.removeItem('categorias');
+        document.getElementById('archivo-csv').value = '';
+        document.getElementById('categoria').innerHTML = '<option value="">Seleccione...</option>';
+        document.getElementById('estilo').innerHTML = '<option value="">Seleccione...</option>';
+        document.getElementById('nueva-categoria').value = '';
+        document.getElementById('nombrep').innerText = '';
+        document.getElementById('prompt').value = '';
+        document.getElementById('negprompt').value = '';
+    }
+
+    function previsualizarEstilo() {
+        var selectedEstilo = document.getElementById('estilo').value;
+        if (!selectedEstilo) {
+            alert('Seleccione un estilo para previsualizar.');
+            return;
+        }
+
+        // Obtener el nombre del estilo seleccionado
+        var estiloName = selectedEstilo.replace(/\s+/g, '').toLowerCase(); // Eliminar espacios y convertir a minúsculas
+
+        // Construir la URL de las imágenes
+        var img1Src = './imagenes/' + estiloName + '1.jpg'; // Asumiendo que las imágenes son jpg
+        var img2Src = './imagenes/' + estiloName + '2.jpg';
+        var img3Src = './imagenes/' + estiloName + '3.jpg';
+
+        // Calcular el ancho de la ventana emergente
+        var windowWidth = 320 * 3 + 20 * 2; // Ancho total de los thumbnails + márgenes entre ellos
+
+        // Abrir una ventana emergente con las imágenes
+        var popupWindow = window.open('', 'Previsualización de Estilo', 'width=' + windowWidth + ',height=400');
+        popupWindow.document.write('<html><head><title>Previsualización de Estilo</title></head><body>');
+        popupWindow.document.write('<h2>Previsualización de Estilo: ' + selectedEstilo + '</h2>');
+        popupWindow.document.write('<div style="display: flex; justify-content: space-between;">');
+        popupWindow.document.write('<img src="' + img1Src + '" style="max-width: 320px; max-height: 320px; margin-right: 10px;">');
+        popupWindow.document.write('<img src="' + img2Src + '" style="max-width: 320px; max-height: 320px; margin-right: 10px;">');
+        popupWindow.document.write('<img src="' + img3Src + '" style="max-width: 320px; max-height: 320px;">');
+        popupWindow.document.write('</div>');
+        popupWindow.document.write('</body></html>');
+        popupWindow.document.close();
+    }
+
+    function verImagen(url) {
+        window.open(url, '_blank', 'width=auto,height=auto');
+    }
+
+    document.getElementById('archivo-csv').addEventListener('change', function() {
+        var file = this.files[0];
+        if (file) {
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                var lines = e.target.result.split('\n');
+                var categorias = [];
+                var currentCategoria = null;
+                lines.forEach(function(line, index) {
+                    if (line.startsWith('>>>>>')) {
+                        currentCategoria = line.substring(6).trim();
+                        if (currentCategoria !== '') {
+                            categorias.push({ categoria: currentCategoria, estilos: [] });
+                        }
+                    } else if (currentCategoria && line.trim() !== '') {
+                        var parts = parseCSVLine(line);
+                        var estilo = parts[0].trim(); // Style name
+                        var prompt = parts[1].trim().replace(/^"|"$/g, ''); // Remove surrounding quotes
+                        var negprompt = parts[2].trim().replace(/^"|"$/g, ''); // Remove surrounding quotes
+                        if (estilo !== '') {
+                            categorias[categorias.length - 1].estilos.push({ estilo: estilo, prompt: prompt, negprompt: negprompt });
+                        }
+                    }
+                });
+                localStorage.setItem('categorias', JSON.stringify(categorias));
+                cargarCategorias(categorias);
+            };
+            reader.readAsText(file);
+        }
+    });
+
+    function parseCSVLine(line) {
+        var delimiter = ',';
+        var regex = new RegExp('(?:^|' + delimiter + ')(?:"([^"]*(?:""[^"]*)*)"|([^' + delimiter + ']*))', 'gi');
+        var parts = [];
+        line.replace(regex, function(match, g1, g2) {
+            var value = g1 !== undefined ? g1.replace(/""/g, '"') : g2;
+            parts.push(value);
+            return '';
+        });
+        return parts;
+    }
+
+    function cargarCategorias(categorias) {
+        var selectCategoria = document.getElementById('categoria');
+        selectCategoria.innerHTML = '<option value="">Seleccione...</option>';
+        categorias.sort((a, b) => a.categoria.localeCompare(b.categoria));
+        categorias.forEach(function(categoria) {
+            var option = document.createElement('option');
+            option.text = categoria.categoria;
+            option.value = categoria.categoria;
+            selectCategoria.add(option);
+        });
+    }
+
+    function cargarEstilos() {
+        var selectCategoria = document.getElementById('categoria');
+        var selectEstilo = document.getElementById('estilo');
+        var selectedCategoria = selectCategoria.value;
+        var categorias = JSON.parse(localStorage.getItem('categorias'));
+        var selectedCategory = categorias.find(function(item) {
+            return item.categoria === selectedCategoria;
+        });
+        if (selectedCategory) {
+            selectEstilo.innerHTML = '<option value="">Seleccione...</option>';
+            selectedCategory.estilos.sort((a, b) => a.estilo.localeCompare(b.estilo)); // Sort styles alphabetically
+            selectedCategory.estilos.forEach(function(estilo) {
+                var option = document.createElement('option');
+                option.text = estilo.estilo;
+                option.value = estilo.estilo;
+                selectEstilo.add(option);
+            });
+        }
+    }
+
+    function cargarValoresPrompt() {
+        var selectEstilo = document.getElementById('estilo');
+        var selectedEstilo = selectEstilo.value;
+        var categorias = JSON.parse(localStorage.getItem('categorias'));
+        var selectedCategoria = document.getElementById('categoria').value;
+        var selectedCategory = categorias.find(function(item) {
+            return item.categoria === selectedCategoria;
+        });
+        if (selectedCategory) {
+            var selectedStyle = selectedCategory.estilos.find(function(estilo) {
+                return estilo.estilo === selectedEstilo;
+            });
+            if (selectedStyle) {
+                document.getElementById('prompt').value = selectedStyle.prompt;
+                document.getElementById('negprompt').value = selectedStyle.negprompt;
+
+                // Mostrar un alert con el nombre del estilo
+                nombrep.innerHTML = selectedStyle.estilo;
+            }
+        }
+    }
+
+    function copiarContenido(idCampo) {
+        const campo = document.getElementById(idCampo);
+        campo.select();
+        document.execCommand('copy');
+        alert('El contenido se ha copiado al portapapeles.');
+    }
+
+    function agregarNuevaCategoria() {
+        var nuevaCategoria = document.getElementById('nueva-categoria').value.trim();
+        if (nuevaCategoria !== '') {
+            var selectCategoria = document.getElementById('categoria');
+            var categorias = JSON.parse(localStorage.getItem('categorias'));
+            if (!categorias.find(function(item) { return item.categoria === nuevaCategoria; })) {
+                categorias.push({ categoria: nuevaCategoria, estilos: [] });
+                localStorage.setItem('categorias', JSON.stringify(categorias));
+
+                // Agregar la nueva categoría al combo de categorías
+                var option = document.createElement('option');
+                option.text = nuevaCategoria;
+                option.value = nuevaCategoria;
+                selectCategoria.add(option);
+
+                alert('Se ha agregado la nueva categoría: ' + nuevaCategoria);
+            } else {
+                alert('La categoría ya existe.');
+            }
+        } else {
+            alert('Por favor, ingrese un nombre para la nueva categoría.');
+        }
+    }
+
+    function agregarNuevoEstilo() {
+        var selectedCategoria = document.getElementById('categoria').value;
+        if (!selectedCategoria) {
+            alert('Seleccione una categoría antes de agregar un nuevo estilo.');
+            return;
+        }
+
+        var nuevoEstilo = prompt('Ingrese el nombre del nuevo estilo:');
+        if (nuevoEstilo) {
+            var nuevoPrompt = prompt('Ingrese el prompt para el nuevo estilo:');
+            var nuevoNegPrompt = prompt('Ingrese el negprompt para el nuevo estilo:');
+            if (nuevoPrompt !== null && nuevoNegPrompt !== null) {
+                var categorias = JSON.parse(localStorage.getItem('categorias'));
+                var selectedCategory = categorias.find(function(item) {
+                    return item.categoria === selectedCategoria;
+                });
+                if (selectedCategory) {
+                    selectedCategory.estilos.push({ estilo: nuevoEstilo, prompt: nuevoPrompt, negprompt: nuevoNegPrompt });
+                    localStorage.setItem('categorias', JSON.stringify(categorias));
+                    cargarEstilos();
+                    alert('El nuevo estilo se ha agregado a la categoría seleccionada.');
+                } else {
+                    alert('No se encontró la categoría seleccionada.');
+                }
+            } else {
+                alert('La operación ha sido cancelada.');
+            }
+        }
+    }
+
+    function guardarArchivoCSV() {
+        var categorias = JSON.parse(localStorage.getItem('categorias'));
+        var csvContent = '';
+
+        csvContent += 'name,prompt,negative_prompt\n';
+
+        categorias.forEach(function(categoria) {
+            csvContent += '>>>>> ' + categoria.categoria + '\n';
+            categoria.estilos.forEach(function(estilo) {
+                csvContent += estilo.estilo + ',"' + estilo.prompt + '","' + estilo.negprompt + '"\n';
+            });
+        });
+
+        var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+        var fileName = 'prompts.csv';
+        if (window.navigator.msSaveOrOpenBlob) {
+            window.navigator.msSaveBlob(blob, fileName);
+        } else {
+            var link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.setAttribute('download', fileName);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    }
+
+    // Función para editar el contenido
+    /*function editarContenido(idCampo) {
+        const campo = document.getElementById(idCampo);
+        const selectedEstilo = document.getElementById('estilo').value;
+        const selectedCategoria = document.getElementById('categoria').value;
+        const categorias = JSON.parse(localStorage.getItem('categorias'));
+        
+        const selectedCategory = categorias.find(category => category.categoria === selectedCategoria);
+        if (selectedCategory) {
+            const selectedStyle = selectedCategory.estilos.find(estilo => estilo.estilo === selectedEstilo);
+            if (selectedStyle) {
+                // Aquí puedes acceder a los datos del estilo seleccionado y usarlos como necesites
+                const estilo = {
+                    nombre: selectedStyle.estilo,
+                    prompt: selectedStyle.prompt,
+                    negprompt: selectedStyle.negprompt
+                };
+
+                const cadenaareemplazar = estilo.nombre + ",\"" + estilo.prompt + "\",\"" + estilo.negprompt + "\"";
+
+                // Utiliza SweetAlert para mostrar un cuadro de diálogo personalizado
+                Swal.fire({
+                    title: 'Editar prompt:',
+                    html: `<textarea id="editedPrompt" rows="10" cols="50">${estilo[idCampo]}</textarea>`,
+                    showCancelButton: true,
+                    confirmButtonText: 'Guardar',
+                    cancelButtonText: 'Cancelar',
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        estilo[idCampo] = document.getElementById('editedPrompt').value;
+                        const cadenanueva = estilo.nombre + ",\"" + estilo.prompt + "\",\"" + estilo.negprompt + "\"";
+                        campo.value = estilo[idCampo];
+                    }
+                });
+            } else {
+                alert('No se encontró el estilo seleccionado.');
+            }
+        } else {
+            alert('No se encontró la categoría seleccionada.');
+        }
+    }*/
+
+    function editarContenido(idCampo) {
+        const campo = document.getElementById(idCampo);
+        const selectedEstilo = document.getElementById('estilo').value;
+        const selectedCategoria = document.getElementById('categoria').value;
+        const categorias = JSON.parse(localStorage.getItem('categorias'));
+        
+        const selectedCategory = categorias.find(category => category.categoria === selectedCategoria);
+        if (selectedCategory) {
+            const selectedStyle = selectedCategory.estilos.find(estilo => estilo.estilo === selectedEstilo);
+            if (selectedStyle) {
+                // Aquí puedes acceder a los datos del estilo seleccionado y usarlos como necesites
+                const estilo = {
+                    nombre: selectedStyle.estilo,
+                    prompt: selectedStyle.prompt,
+                    negprompt: selectedStyle.negprompt
+                };
+
+                const cadenaareemplazar = estilo.nombre + ",\"" + estilo.prompt + "\",\"" + estilo.negprompt + "\"";
+
+                // Utiliza SweetAlert para mostrar un cuadro de diálogo personalizado
+                Swal.fire({
+                    title: 'Editar prompt:',
+                    html: `<textarea id="editedPrompt" rows="10" cols="50">${estilo[idCampo]}</textarea>`,
+                    showCancelButton: true,
+                    confirmButtonText: 'Guardar',
+                    cancelButtonText: 'Cancelar',
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        estilo[idCampo] = document.getElementById('editedPrompt').value;
+                        const cadenanueva = estilo.nombre + ",\"" + estilo.prompt + "\",\"" + estilo.negprompt + "\"";
+                        campo.value = estilo[idCampo];
+
+                        // Modificar el archivo CSV actualizado
+                        modificarArchivoCSV(cadenaareemplazar, cadenanueva);
+                    }
+                });
+            } else {
+                alert('No se encontró el estilo seleccionado.');
+            }
+        } else {
+            alert('No se encontró la categoría seleccionada.');
+        }
+    }
+
+    function modificarArchivoCSV(cadenaareemplazar, cadenanueva) {
+        var categorias = JSON.parse(localStorage.getItem('categorias'));
+        var csvContent = '';
+
+        csvContent += 'name,prompt,negative_prompt\n';
+
+        categorias.forEach(function(categoria) {
+            categoria.estilos.forEach(function(estilo) {
+                // Reemplazar la línea coincidente
+                var linea = estilo.estilo + ',"' + estilo.prompt + '","' + estilo.negprompt + '"';
+                if (linea === cadenaareemplazar) {
+                    csvContent += cadenanueva + '\n';
+                } else {
+                    csvContent += linea + '\n';
+                }
+            });
+        });
+
+        // Actualizar el archivo CSV
+        localStorage.setItem('categorias', JSON.stringify(categorias));
+    }
+
+    function guardarCambios() {
+        var categorias = JSON.parse(localStorage.getItem('categorias'));
+        var csvContent = '';
+
+        csvContent += 'name,prompt,negative_prompt\n';
+
+        categorias.forEach(function(categoria) {
+            csvContent += '>>>>> ' + categoria.categoria + '\n';
+            categoria.estilos.forEach(function(estilo) {
+                csvContent += estilo.estilo + ',"' + estilo.prompt + '","' + estilo.negprompt + '"\n';
+            });
+        });
+
+        var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+        var fileName = 'prompts.csv';
+        if (window.navigator.msSaveOrOpenBlob) {
+            window.navigator.msSaveBlob(blob, fileName);
+        } else {
+            var link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.setAttribute('download', fileName);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    }
+</script>
+</body>
+</html>
